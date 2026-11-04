@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculadora de sistema solar autónomo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --surface: #f4f6f8;
+    --text: #1f2933;
+    --muted: #616e7c;
+    --accent: #b45309;
+    --border: #d2d6dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14181d;
+      --surface: #1f262e;
+      --text: #e4e7eb;
+      --muted: #9aa5b1;
+      --accent: #f59e0b;
+      --border: #3e4c59;
+    }
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 20px 56px; }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+  p { margin: 0; }
+  .muted { color: var(--muted); font-size: 0.92rem; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 440px; }
+  th { text-align: left; font-size: 0.8rem; color: var(--muted); font-weight: 500; padding: 4px 4px; }
+  td { padding: 3px 4px; }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 0.95rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  button {
+    font: inherit;
+    font-size: 0.88rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 11px;
+    cursor: pointer;
+  }
+  .add { margin-top: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 3px; }
+  .result {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .result .name { color: var(--muted); }
+  .result .value { font-size: 1.3rem; font-weight: 650; color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Calculadora de sistema solar autónomo</h1>
+  <p class="muted">Indica qué equipos usas y el sistema te dice cuánto necesitas. Se calcula solo.</p>
+
+  <h2>1. Tus equipos</h2>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Equipo</th><th>Watts</th><th>Horas al día</th><th>Cantidad</th><th></th></tr>
+      </thead>
+      <tbody id="cargas"></tbody>
+    </table>
+  </div>
+  <button type="button" class="add" id="agregar">Agregar equipo</button>
+
+  <h2>2. Tu sistema</h2>
+  <div class="grid">
+    <div><label for="hsp">Horas de sol al día</label><input id="hsp" type="number" step="0.1" min="1" value="4.5"></div>
+    <div><label for="voltaje">Voltaje (V)</label><input id="voltaje" type="number" step="12" min="12" value="24"></div>
+    <div><label for="autonomia">Días sin sol</label><input id="autonomia" type="number" step="1" min="1" value="2"></div>
+    <div><label for="panel">Watts por panel</label><input id="panel" type="number" step="10" min="50" value="330"></div>
+  </div>
+
+  <h2>3. Lo que necesitas</h2>
+  <div class="result"><span class="name">Consumo diario</span><span class="value" id="r-e">-</span></div>
+  <div class="result"><span class="name">Paneles solares</span><span class="value" id="r-n">-</span></div>
+  <div class="result"><span class="name">Baterías</span><span class="value" id="r-c">-</span></div>
+  <div class="result"><span class="name">Inversor</span><span class="value" id="r-inv">-</span></div>
+
+  <p class="muted">Cálculo referencial. Se asume una eficiencia del 85 %, pérdidas del sistema del 25 % y que las baterías se descargan hasta la mitad como máximo.</p>
+</main>
+
+<script>
+(function () {
+  var cargas = [
+    { equipo: "Foco LED", p: 9, h: 5, n: 6 },
+    { equipo: "Refrigeradora", p: 120, h: 8, n: 1 },
+    { equipo: "Televisor", p: 60, h: 4, n: 1 }
+  ];
+  var tamanos = [300, 500, 800, 1000, 1500, 2000, 3000, 5000, 8000];
+  var tbody = document.getElementById("cargas");
+
+  function num(id) { return parseFloat(document.getElementById(id).value) || 0; }
+  function fmt(x) { return x.toLocaleString("es-PE", { maximumFractionDigits: 0 }); }
+  function set(id, t) { document.getElementById(id).textContent = t; }
+
+  function render() {
+    tbody.innerHTML = "";
+    cargas.forEach(function (c, i) {
+      var tr = document.createElement("tr");
+      tr.innerHTML =
+        '<td><input type="text" data-i="' + i + '" data-k="equipo" aria-label="Equipo"></td>' +
+        '<td><input type="number" min="0" data-i="' + i + '" data-k="p" aria-label="Watts"></td>' +
+        '<td><input type="number" min="0" max="24" step="0.5" data-i="' + i + '" data-k="h" aria-label="Horas al día"></td>' +
+        '<td><input type="number" min="0" step="1" data-i="' + i + '" data-k="n" aria-label="Cantidad"></td>' +
+        '<td><button type="button" data-del="' + i + '">Quitar</button></td>';
+      tbody.appendChild(tr);
+      var inp = tr.querySelectorAll("input");
+      inp[0].value = c.equipo; inp[1].value = c.p; inp[2].value = c.h; inp[3].value = c.n;
+    });
+    calcular();
+  }
+
+  function calcular() {
+    var e = 0, pot = 0;
+    cargas.forEach(function (c) {
+      var p = parseFloat(c.p) || 0, h = parseFloat(c.h) || 0, n = parseFloat(c.n) || 0;
+      e += p * h * n;
+      pot += p * n;
+    });
+    var hsp = num("hsp"), v = num("voltaje"), aut = num("autonomia"), panel = num("panel");
+    if (e <= 0 || hsp <= 0 || v <= 0 || aut <= 0 || panel <= 0) {
+      set("r-e", e > 0 ? fmt(e) + " Wh" : "-");
+      set("r-n", "-"); set("r-c", "-"); set("r-inv", "-");
+      return;
+    }
+    var eReal = e / 0.85;
+    var pPico = eReal / (hsp * 0.75);
+    var paneles = Math.ceil(pPico / panel);
+    var bat = (eReal * aut) / (v * 0.5);
+    var invMin = pot * 1.25;
+    var inv = tamanos.find(function (t) { return t >= invMin; }) || Math.ceil(invMin / 1000) * 1000;
+
+    set("r-e", fmt(e) + " Wh");
+    set("r-n", paneles + (paneles === 1 ? " panel" : " paneles") + " de " + fmt(panel) + " W");
+    set("r-c", fmt(bat) + " Ah a " + fmt(v) + " V");
+    set("r-inv", fmt(inv) + " W");
+  }
+
+  tbody.addEventListener("input", function (ev) {
+    var t = ev.target, i = t.getAttribute("data-i"), k = t.getAttribute("data-k");
+    if (i === null) return;
+    cargas[i][k] = t.value;
+    calcular();
+  });
+  tbody.addEventListener("click", function (ev) {
+    var d = ev.target.getAttribute("data-del");
+    if (d === null) return;
+    cargas.splice(parseInt(d, 10), 1);
+    render();
+  });
+  document.getElementById("agregar").addEventListener("click", function () {
+    cargas.push({ equipo: "", p: 0, h: 0, n: 1 });
+    render();
+  });
+  ["hsp", "voltaje", "autonomia", "panel"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", calcular);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
